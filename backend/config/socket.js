@@ -34,6 +34,8 @@ export const initSocket = (server) => {
     socket.on('join_room', (roomId) => {
       socket.join(roomId);
       console.log(`Socket ${socket.id} joined room: ${roomId}`);
+      // Notify other room members that a new user joined
+      socket.to(roomId).emit('user_joined_room', { socketId: socket.id });
     });
 
     socket.on('join_user_room', (userId) => {

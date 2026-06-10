@@ -157,8 +157,9 @@ const Discussions = () => {
   const [remoteStream, setRemoteStream] = useState(null);
   const [sharingUser, setSharingUser] = useState(null); // { socketId, userId, name }
 
-  const peerConnectionRef = useRef(null);
+  const peerConnectionsRef = useRef({}); // Map of socketId -> RTCPeerConnection
   const localStreamRef = useRef(null);
+  const iceCandidatesQueueRef = useRef({}); // Map of socketId -> [RTCIceCandidate]
 
   const fetchRooms = async () => {
     try {
@@ -174,12 +175,13 @@ const Discussions = () => {
   };
 
   const cleanupScreenShare = () => {
-    if (peerConnectionRef.current) {
+    Object.keys(peerConnectionsRef.current).forEach((id) => {
       try {
-        peerConnectionRef.current.close();
+        peerConnectionsRef.current[id].close();
       } catch (e) {}
-      peerConnectionRef.current = null;
-    }
+    });
+    peerConnectionsRef.current = {};
+    iceCandidatesQueueRef.current = {};
     setRemoteStream(null);
     setSharingUser(null);
   };
@@ -202,12 +204,13 @@ const Discussions = () => {
       });
     }
 
-    if (peerConnectionRef.current) {
+    Object.keys(peerConnectionsRef.current).forEach((id) => {
       try {
-        peerConnectionRef.current.close();
+        peerConnectionsRef.current[id].close();
       } catch (e) {}
-      peerConnectionRef.current = null;
-    }
+    });
+    peerConnectionsRef.current = {};
+    iceCandidatesQueueRef.current = {};
   };
 
   const startScreenShare = async () => {
@@ -274,21 +277,59 @@ const Discussions = () => {
       clearCanvasLocal();
     });
 
-    socketRef.current.on('user_joined_screen', async (data) => {
+    socketRef.current.on('user_joined_room', (data) => {
+      // If we are sharing screen, notify the new room member
+      if (localStreamRef.current && socketRef.current) {
+        socketRef.current.emit('screen_signal', {
+          to: data.socketId,
+          signal: { type: 'share_advertisement', name: user.name, userId: user.id }
+        });
+      }
+    });
+
+    socketRef.current.on('user_joined_screen', (data) => {
       if (socketRef.current && data.socketId !== socketRef.current.id) {
         setSharingUser(data);
         setActiveTab('screenshare');
 
-        try {
-          const pc = new RTCPeerConnection({
+        // Viewer sends a request to the sharer to initiate peer connection
+        socketRef.current.emit('screen_signal', {
+          to: data.socketId,
+          signal: { type: 'request' }
+        });
+      }
+    });
+
+    socketRef.current.on('screen_signal', async (signalData) => {
+      const { from, signal } = signalData;
+
+      try {
+        if (signal.type === 'share_advertisement') {
+          // A user is already sharing screen. Setup info and send request.
+          setSharingUser({ socketId: from, name: signal.name, userId: signal.userId });
+          setActiveTab('screenshare');
+
+          if (socketRef.current) {
+            socketRef.current.emit('screen_signal', {
+              to: from,
+              signal: { type: 'request' }
+            });
+          }
+          return;
+        }
+
+        let pc = peerConnectionsRef.current[from];
+
+        if (!pc && (signal.type === 'request' || signal.sdp)) {
+          pc = new RTCPeerConnection({
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
           });
-          peerConnectionRef.current = pc;
+          peerConnectionsRef.current[from] = pc;
 
           pc.onicecandidate = (event) => {
             if (event.candidate && socketRef.current) {
               socketRef.current.emit('screen_signal', {
-                to: data.socketId,
+                to: from,
                 signal: { candidate: event.candidate }
               });
             }
@@ -300,38 +341,6 @@ const Discussions = () => {
             }
           };
 
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-
-          socketRef.current.emit('screen_signal', {
-            to: data.socketId,
-            signal: { sdp: pc.localDescription }
-          });
-        } catch (webrtcErr) {
-          console.error("Failed to establish incoming WebRTC connection:", webrtcErr);
-        }
-      }
-    });
-
-    socketRef.current.on('screen_signal', async (signalData) => {
-      const { from, signal } = signalData;
-
-      try {
-        if (!peerConnectionRef.current) {
-          const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-          });
-          peerConnectionRef.current = pc;
-
-          pc.onicecandidate = (event) => {
-            if (event.candidate && socketRef.current) {
-              socketRef.current.emit('screen_signal', {
-                to: from,
-                signal: { candidate: event.candidate }
-              });
-            }
-          };
-
           if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach((track) => {
               pc.addTrack(track, localStreamRef.current);
@@ -339,22 +348,62 @@ const Discussions = () => {
           }
         }
 
-        const pc = peerConnectionRef.current;
-
-        if (signal.sdp) {
-          if (signal.sdp.type === 'offer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
+        if (signal.type === 'request') {
+          if (pc) {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
             socketRef.current.emit('screen_signal', {
               to: from,
               signal: { sdp: pc.localDescription }
             });
-          } else if (signal.sdp.type === 'answer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          }
+        } else if (signal.sdp) {
+          if (pc) {
+            if (signal.sdp.type === 'offer') {
+              await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              socketRef.current.emit('screen_signal', {
+                to: from,
+                signal: { sdp: pc.localDescription }
+              });
+
+              // Process queued candidates
+              if (iceCandidatesQueueRef.current[from]) {
+                for (const candidate of iceCandidatesQueueRef.current[from]) {
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                  } catch (e) {
+                    console.error("Failed to add queued candidate:", e);
+                  }
+                }
+                delete iceCandidatesQueueRef.current[from];
+              }
+            } else if (signal.sdp.type === 'answer') {
+              await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+
+              // Process queued candidates
+              if (iceCandidatesQueueRef.current[from]) {
+                for (const candidate of iceCandidatesQueueRef.current[from]) {
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                  } catch (e) {
+                    console.error("Failed to add queued candidate:", e);
+                  }
+                }
+                delete iceCandidatesQueueRef.current[from];
+              }
+            }
           }
         } else if (signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          if (pc && pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else {
+            if (!iceCandidatesQueueRef.current[from]) {
+              iceCandidatesQueueRef.current[from] = [];
+            }
+            iceCandidatesQueueRef.current[from].push(signal.candidate);
+          }
         }
       } catch (err) {
         console.error("Signaling coordination error:", err);
