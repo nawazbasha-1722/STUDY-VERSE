@@ -15,11 +15,11 @@ export default function CustomCursor() {
   const cursorYSpring = useSpring(cursorY, springConfig);
 
   useEffect(() => {
-    // Only show custom cursor on devices that support hover (non-touch)
-    const mediaQuery = window.matchMedia('(pointer: fine)');
-    if (!mediaQuery.matches) return;
-
     const moveCursor = (e) => {
+      // Remove touch class if they are moving the mouse
+      if (document.body.classList.contains('using-touch')) {
+        document.body.classList.remove('using-touch');
+      }
       cursorX.set(e.clientX);
       cursorY.set(e.clientY);
       if (!isVisible) setIsVisible(true);
@@ -31,11 +31,17 @@ export default function CustomCursor() {
     const handleMouseDown = () => setIsClicking(true);
     const handleMouseUp = () => setIsClicking(false);
 
+    const handleTouchStart = () => {
+      document.body.classList.add('using-touch');
+      setIsVisible(false);
+    };
+
     window.addEventListener('mousemove', moveCursor);
     document.addEventListener('mouseleave', handleMouseLeave);
     document.addEventListener('mouseenter', handleMouseEnter);
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
 
     return () => {
       window.removeEventListener('mousemove', moveCursor);
@@ -43,13 +49,11 @@ export default function CustomCursor() {
       document.removeEventListener('mouseenter', handleMouseEnter);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchstart', handleTouchStart);
     };
   }, [isVisible]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(pointer: fine)');
-    if (!mediaQuery.matches) return;
-
     const handleMouseOver = (e) => {
       const target = e.target;
       if (!target) return;

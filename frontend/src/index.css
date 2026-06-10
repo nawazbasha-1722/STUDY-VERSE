@@ -35,17 +35,26 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Custom Cursor styling to hide default cursor on desktop/mouse-enabled pointer devices */
-@media (pointer: fine) {
-  html,
-  body,
-  a,
-  button,
-  input,
-  textarea,
-  select,
-  [role="button"],
-  .cursor-pointer {
-    cursor: none !important;
-  }
+/* Custom Cursor styling - hide default cursor, but restore it if using-touch class is active */
+html,
+body,
+a,
+button,
+input,
+textarea,
+select,
+[role="button"],
+.cursor-pointer {
+  cursor: none !important;
+}
+
+body.using-touch,
+body.using-touch a,
+body.using-touch button,
+body.using-touch input,
+body.using-touch textarea,
+body.using-touch select,
+body.using-touch [role="button"],
+body.using-touch .cursor-pointer {
+  cursor: auto !important;
 }
