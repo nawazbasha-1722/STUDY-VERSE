@@ -1,7 +1,7 @@
+import 'dotenv/config';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import connectDB from './config/db.js';
 import { initSocket } from './config/socket.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
@@ -23,8 +23,7 @@ import projectRoutes from './routes/projectRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
-// Load environment variables
-dotenv.config();
+// Environment variables loaded at top level
 
 // Connect to Database
 connectDB();
