@@ -30,12 +30,17 @@ export const initSocket = (server) => {
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
-    // Room joins
+    // Room joins/leaves
     socket.on('join_room', (roomId) => {
       socket.join(roomId);
       console.log(`Socket ${socket.id} joined room: ${roomId}`);
       // Notify other room members that a new user joined
-      socket.to(roomId).emit('user_joined_room', { socketId: socket.id });
+      socket.to(roomId).emit('user_joined_room', { socketId: socket.id, roomId });
+    });
+
+    socket.on('leave_room', (roomId) => {
+      socket.leave(roomId);
+      console.log(`Socket ${socket.id} left room: ${roomId}`);
     });
 
     socket.on('join_user_room', (userId) => {
@@ -60,7 +65,7 @@ export const initSocket = (server) => {
     });
 
     socket.on('clear_whiteboard', (roomId) => {
-      socket.to(roomId).emit('clear_whiteboard');
+      socket.to(roomId).emit('clear_whiteboard', roomId);
     });
 
     // WebRTC Signaling Events
@@ -85,7 +90,8 @@ export const initSocket = (server) => {
       socket.to(data.roomId).emit('user_joined_screen', {
         socketId: socket.id,
         userId: data.userId,
-        name: data.name
+        name: data.name,
+        roomId: data.roomId
       });
     });
 
@@ -99,7 +105,8 @@ export const initSocket = (server) => {
     socket.on('stop_screen', (data) => {
       socket.to(data.roomId).emit('user_stopped_screen', {
         socketId: socket.id,
-        name: data.name
+        name: data.name,
+        roomId: data.roomId
       });
     });
 

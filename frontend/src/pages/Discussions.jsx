@@ -161,6 +161,32 @@ const Discussions = () => {
   const localStreamRef = useRef(null);
   const iceCandidatesQueueRef = useRef({}); // Map of socketId -> [RTCIceCandidate]
 
+  const userRef = useRef(user);
+  const activeRoomIdRef = useRef(null);
+  const isSharingScreenRef = useRef(false);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    isSharingScreenRef.current = isSharingScreen;
+  }, [isSharingScreen]);
+
+  useEffect(() => {
+    if (activeRoom) {
+      if (activeRoomIdRef.current && activeRoomIdRef.current !== activeRoom._id) {
+        socketRef.current?.emit('leave_room', activeRoomIdRef.current);
+      }
+      activeRoomIdRef.current = activeRoom._id;
+    } else {
+      if (activeRoomIdRef.current) {
+        socketRef.current?.emit('leave_room', activeRoomIdRef.current);
+        activeRoomIdRef.current = null;
+      }
+    }
+  }, [activeRoom]);
+
   const fetchRooms = async () => {
     try {
       const res = await API.get('/discussions');
@@ -197,10 +223,11 @@ const Discussions = () => {
     setIsSharingScreen(false);
     setSharingUser(null);
 
-    if (socketRef.current && activeRoom) {
+    const targetRoomId = activeRoom?._id || activeRoomIdRef.current;
+    if (socketRef.current && targetRoomId) {
       socketRef.current.emit('stop_screen', {
-        roomId: activeRoom._id,
-        name: user.name
+        roomId: targetRoomId,
+        name: userRef.current?.name || 'User'
       });
     }
 
@@ -266,28 +293,37 @@ const Discussions = () => {
     });
 
     socketRef.current.on('receive_message', (data) => {
+      if (activeRoomIdRef.current && data.roomId !== activeRoomIdRef.current) return;
       setMessages((prev) => [...prev, data]);
     });
 
     socketRef.current.on('draw_line', (data) => {
+      if (activeRoomIdRef.current && data.roomId !== activeRoomIdRef.current) return;
       drawOnCanvasReceived(data);
     });
 
-    socketRef.current.on('clear_whiteboard', () => {
+    socketRef.current.on('clear_whiteboard', (roomId) => {
+      if (activeRoomIdRef.current && roomId !== activeRoomIdRef.current) return;
       clearCanvasLocal();
     });
 
     socketRef.current.on('user_joined_room', (data) => {
+      if (activeRoomIdRef.current && data.roomId !== activeRoomIdRef.current) return;
       // If we are sharing screen, notify the new room member
-      if (localStreamRef.current && socketRef.current) {
+      if ((localStreamRef.current || isSharingScreenRef.current) && socketRef.current) {
         socketRef.current.emit('screen_signal', {
           to: data.socketId,
-          signal: { type: 'share_advertisement', name: user.name, userId: user.id }
+          signal: { 
+            type: 'share_advertisement', 
+            name: userRef.current?.name || 'User', 
+            userId: userRef.current?.id || userRef.current?._id 
+          }
         });
       }
     });
 
     socketRef.current.on('user_joined_screen', (data) => {
+      if (activeRoomIdRef.current && data.roomId !== activeRoomIdRef.current) return;
       if (socketRef.current && data.socketId !== socketRef.current.id) {
         setSharingUser(data);
         setActiveTab('screenshare');
@@ -410,8 +446,10 @@ const Discussions = () => {
       }
     });
 
-    socketRef.current.on('user_stopped_screen', () => {
+    socketRef.current.on('user_stopped_screen', (data) => {
+      if (activeRoomIdRef.current && data.roomId !== activeRoomIdRef.current) return;
       cleanupScreenShare();
+      setActiveTab('whiteboard');
     });
 
     return () => {

@@ -24,10 +24,12 @@ import Discussions from './pages/Discussions';
 import Projects from './pages/Projects';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
+import CustomCursor from './components/CustomCursor';
 
 function App() {
   return (
     <AuthProvider>
+      <CustomCursor />
       <Router>
         <Routes>
           {/* Public Routes */}
