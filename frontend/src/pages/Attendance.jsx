@@ -34,6 +34,7 @@ const Attendance = () => {
     sessionType: 'Lecture',
   });
   const [logMessage, setLogMessage] = useState('');
+  const [logError, setLogError] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
 
   // Fetch student's own attendance
@@ -93,23 +94,12 @@ const Attendance = () => {
   const handleFacultyLog = async (e) => {
     e.preventDefault();
     setLogMessage('');
+    setLogError(false);
     setLogLoading(true);
 
     try {
-      // Find student by email to get their ID
-      const userRes = await API.post('/auth/login', { email: facultyForm.studentEmail, password: 'dummy-no-needed' }).catch((err) => err.response);
-      // Wait, we need a helper or direct lookups in backend instead of relying on auth.
-      // Let's make sure the backend endpoint logAttendance handles email lookup or we lookup in backend.
-      // Ah! In backend/controllers/attendanceController.js:
-      // "const { studentId, subject, date, status, sessionType } = req.body;"
-      // Let's check: if we search by email in backend, that's easier. Let's make faculty log accept email directly, or let's support email mapping.
-      // Wait, let's write a backend endpoint or modify logAttendance to support email mapping.
-      // Let's look at `logAttendance` in backend. It currently takes `studentId`.
-      // Let's modify `logAttendance` to fetch user by email first if `studentEmail` is passed!
-      // Yes! That's a great developer practice. We can do that to make the frontend form simple.
-      // For now, let's send log to backend:
       const payload = {
-        studentEmail: facultyForm.studentEmail, // We will update the backend controller to accept email!
+        studentEmail: facultyForm.studentEmail,
         subject: facultyForm.subject,
         status: facultyForm.status,
         sessionType: facultyForm.sessionType,
@@ -118,6 +108,7 @@ const Attendance = () => {
       const res = await API.post('/attendance', payload);
       if (res.data?.success) {
         setLogMessage('Attendance logged successfully!');
+        setLogError(false);
         setFacultyForm({
           studentEmail: '',
           subject: '',
@@ -127,6 +118,7 @@ const Attendance = () => {
       }
     } catch (err) {
       setLogMessage(err.response?.data?.message || 'Error logging attendance. Ensure student email is correct.');
+      setLogError(true);
     } finally {
       setLogLoading(false);
     }
@@ -335,7 +327,7 @@ const Attendance = () => {
           </div>
 
           {logMessage && (
-            <div className={`px-4 py-3 rounded-xl text-sm ${logMessage.startsWith('Error') ? 'bg-red-500/10 border border-red-500/20 text-red-400' : 'bg-green-500/10 border border-green-500/20 text-green-400'}`}>
+            <div className={`px-4 py-3 rounded-xl text-sm ${logError ? 'bg-red-500/10 border border-red-500/20 text-red-400' : 'bg-green-500/10 border border-green-500/20 text-green-400'}`}>
               {logMessage}
             </div>
           )}

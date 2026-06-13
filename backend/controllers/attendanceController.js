@@ -33,7 +33,7 @@ export const logAttendance = async (req, res) => {
     }
 
     const attendance = await Attendance.create({
-      student: studentId,
+      student: finalStudentId,
       subject,
       date: date || new Date(),
       status,
