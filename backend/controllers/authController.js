@@ -319,6 +319,7 @@ export const updateProfile = async (req, res) => {
 
     // Update fields
     if (name !== undefined) user.name = name;
+    if (!user.profile) user.profile = {};
     if (phone !== undefined) user.profile.phone = phone;
     if (department !== undefined) user.profile.department = department;
     if (year !== undefined) user.profile.year = year;

@@ -152,17 +152,17 @@ const Layout = () => {
 
       {/* User Session / Logout */}
       <div className="pt-6 border-t border-white/5 mt-auto flex flex-col gap-4">
-        <div className="flex items-center gap-3 px-2">
+        <Link to="/profile" className="flex items-center gap-3 px-2 hover:bg-white/5 py-2 rounded-xl transition-all group">
           <img
             src={user?.profile?.avatar || 'https://res.cloudinary.com/placeholder-avatar.png'}
             alt="Avatar"
-            className="w-10 h-10 rounded-full border border-purple-500/20 object-cover bg-slate-800"
+            className="w-10 h-10 rounded-full border border-purple-500/20 object-cover bg-slate-800 group-hover:border-purple-500 transition-colors"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
+            <p className="text-sm font-semibold text-white truncate group-hover:text-purple-400 transition-colors">{user?.name}</p>
             <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
           </div>
-        </div>
+        </Link>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3.5 w-full px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
