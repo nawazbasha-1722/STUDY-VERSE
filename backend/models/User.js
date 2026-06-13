@@ -53,6 +53,8 @@ const UserSchema = new mongoose.Schema(
     // Placements Readiness metrics & GPA caches
     gpaStats: {
       cgpa: { type: Number, default: 0 },
+      previousCgpa: { type: Number, default: 0 },
+      previousCredits: { type: Number, default: 0 },
       semesters: [
         {
           semester: Number,

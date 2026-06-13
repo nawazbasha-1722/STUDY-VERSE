@@ -30,9 +30,17 @@ const GPA = () => {
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState([]);
   const [cgpa, setCgpa] = useState(0);
+  const [previousCgpa, setPreviousCgpa] = useState('');
+  const [previousCredits, setPreviousCredits] = useState('');
+  const [baselineSaving, setBaselineSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Logging mode toggle
+  const [isDirectSGPA, setIsDirectSGPA] = useState(false);
+  const [directSgpa, setDirectSgpa] = useState('');
+  const [directCredits, setDirectCredits] = useState('');
 
   // Semester Builder state
   const [selectedSemester, setSelectedSemester] = useState(1);
@@ -46,6 +54,8 @@ const GPA = () => {
       if (response.data?.success) {
         setHistory(response.data.records || []);
         setCgpa(response.data.cgpa || 0);
+        setPreviousCgpa(response.data.previousCgpa !== undefined ? response.data.previousCgpa : '');
+        setPreviousCredits(response.data.previousCredits !== undefined ? response.data.previousCredits : '');
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch GPA history');
@@ -79,6 +89,9 @@ const GPA = () => {
 
   // Calculate live SGPA locally
   const calculateLiveSGPA = () => {
+    if (isDirectSGPA) {
+      return Number(directSgpa) ? Number(directSgpa).toFixed(2) : '0.00';
+    }
     let totalCredits = 0;
     let earnedPoints = 0;
     courses.forEach((c) => {
@@ -90,6 +103,30 @@ const GPA = () => {
     return totalCredits > 0 ? (earnedPoints / totalCredits).toFixed(2) : '0.00';
   };
 
+  // Save Baseline details
+  const handleSaveBaseline = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setBaselineSaving(true);
+
+    try {
+      const response = await API.post('/gpa/baseline', {
+        previousCgpa: Number(previousCgpa) || 0,
+        previousCredits: Number(previousCredits) || 0,
+      });
+
+      if (response.data?.success) {
+        setSuccess('Baseline GPA and credits updated successfully!');
+        fetchGPAHistory();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update baseline GPA');
+    } finally {
+      setBaselineSaving(false);
+    }
+  };
+
   // Submit Semester Record
   const handleSubmitSemester = async (e) => {
     e.preventDefault();
@@ -98,15 +135,26 @@ const GPA = () => {
     setSaving(true);
 
     try {
-      const response = await API.post('/gpa/semester', {
+      const payload = {
         semester: Number(selectedSemester),
-        courses,
-      });
+        isDirectSGPA,
+      };
+
+      if (isDirectSGPA) {
+        payload.sgpa = Number(directSgpa);
+        payload.totalCredits = Number(directCredits);
+      } else {
+        payload.courses = courses;
+      }
+
+      const response = await API.post('/gpa/semester', payload);
 
       if (response.data?.success) {
         setSuccess(`Semester ${selectedSemester} logged! SGPA: ${response.data.record.sgpa}`);
-        // Reset courses row
+        // Reset inputs
         setCourses([{ courseCode: '', courseName: '', credits: 4, grade: 'O' }]);
+        setDirectSgpa('');
+        setDirectCredits('');
         fetchGPAHistory();
       }
     } catch (err) {
@@ -182,9 +230,37 @@ const GPA = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Semester Form builder */}
         <div className="lg:col-span-2 bg-[#0f1424] border border-white/5 rounded-3xl p-6 space-y-6">
-          <div className="flex items-center gap-3">
-            <Calculator className="w-6 h-6 text-purple-400" />
-            <h2 className="text-xl font-bold text-white">Log Semester Grades</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Calculator className="w-6 h-6 text-purple-400" />
+              <h2 className="text-xl font-bold text-white">Log Semester Grades</h2>
+            </div>
+            
+            {/* Toggle between logging modes */}
+            <div className="flex bg-[#161b30] border border-white/5 p-1 rounded-xl w-fit">
+              <button
+                type="button"
+                onClick={() => setIsDirectSGPA(false)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  !isDirectSGPA
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                By Subjects
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDirectSGPA(true)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  isDirectSGPA
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Direct SGPA
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -216,98 +292,136 @@ const GPA = () => {
               </select>
             </div>
 
-            {/* Courses Rows */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-12 gap-3 text-xs text-gray-500 font-bold uppercase tracking-wider pl-2">
-                <div className="col-span-3">Code</div>
-                <div className="col-span-5">Course Name</div>
-                <div className="col-span-2">Credits</div>
-                <div className="col-span-2">Grade</div>
-              </div>
+            {!isDirectSGPA ? (
+              /* Courses Rows (By Subjects) */
+              <div className="space-y-4">
+                <div className="grid grid-cols-12 gap-3 text-xs text-gray-500 font-bold uppercase tracking-wider pl-2">
+                  <div className="col-span-3">Code</div>
+                  <div className="col-span-5">Course Name</div>
+                  <div className="col-span-2">Credits</div>
+                  <div className="col-span-2">Grade</div>
+                </div>
 
-              <AnimatePresence initial={false}>
-                {courses.map((course, idx) => (
-                  <motion.div
-                    key={idx}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="grid grid-cols-12 gap-3 items-center"
-                  >
-                    <div className="col-span-3">
-                      <input
-                        type="text"
-                        placeholder="CS301"
-                        required
-                        value={course.courseCode}
-                        onChange={(e) => handleCourseChange(idx, 'courseCode', e.target.value)}
-                        className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none"
-                      />
-                    </div>
-                    <div className="col-span-5">
-                      <input
-                        type="text"
-                        placeholder="DBMS"
-                        required
-                        value={course.courseName}
-                        onChange={(e) => handleCourseChange(idx, 'courseName', e.target.value)}
-                        className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <select
-                        value={course.credits}
-                        onChange={(e) => handleCourseChange(idx, 'credits', Number(e.target.value))}
-                        className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none appearance-none"
-                      >
-                        {[1, 2, 3, 4, 5].map((credit) => (
-                          <option key={credit} value={credit}>
-                            {credit}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-span-2 flex items-center gap-2">
-                      <select
-                        value={course.grade}
-                        onChange={(e) => handleCourseChange(idx, 'grade', e.target.value)}
-                        className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none appearance-none"
-                      >
-                        {Object.keys(GRADE_VALUES).map((g) => (
-                          <option key={g} value={g}>
-                            {g}
-                          </option>
-                        ))}
-                      </select>
-                      {courses.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeCourseRow(idx)}
-                          className="text-red-500 hover:text-red-400 p-1 cursor-pointer"
+                <AnimatePresence initial={false}>
+                  {courses.map((course, idx) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="grid grid-cols-12 gap-3 items-center"
+                    >
+                      <div className="col-span-3">
+                        <input
+                          type="text"
+                          placeholder="CS301"
+                          required
+                          value={course.courseCode}
+                          onChange={(e) => handleCourseChange(idx, 'courseCode', e.target.value)}
+                          className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none"
+                        />
+                      </div>
+                      <div className="col-span-5">
+                        <input
+                          type="text"
+                          placeholder="DBMS"
+                          required
+                          value={course.courseName}
+                          onChange={(e) => handleCourseChange(idx, 'courseName', e.target.value)}
+                          className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <select
+                          value={course.credits}
+                          onChange={(e) => handleCourseChange(idx, 'credits', Number(e.target.value))}
+                          className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none appearance-none"
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+                          {[1, 2, 3, 4, 5].map((credit) => (
+                            <option key={credit} value={credit}>
+                              {credit}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-2">
+                        <select
+                          value={course.grade}
+                          onChange={(e) => handleCourseChange(idx, 'grade', e.target.value)}
+                          className="w-full bg-[#161b30] border border-white/5 rounded-xl px-3 py-2 text-white text-sm focus:outline-none appearance-none"
+                        >
+                          {Object.keys(GRADE_VALUES).map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+                        {courses.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeCourseRow(idx)}
+                            className="text-red-500 hover:text-red-400 p-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            ) : (
+              /* Direct SGPA Input */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-300 text-sm font-semibold mb-2">Semester SGPA</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    required
+                    placeholder="8.25"
+                    value={directSgpa}
+                    onChange={(e) => setDirectSgpa(e.target.value)}
+                    className="w-full bg-[#161b30] border border-white/5 rounded-xl px-4 py-3 text-white text-sm focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 text-sm font-semibold mb-2">Total Semester Credits</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    placeholder="20"
+                    value={directCredits}
+                    onChange={(e) => setDirectCredits(e.target.value)}
+                    className="w-full bg-[#161b30] border border-white/5 rounded-xl px-4 py-3 text-white text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Form actions */}
             <div className="flex gap-4 pt-4 border-t border-white/5 justify-between items-center">
-              <button
-                type="button"
-                onClick={addCourseRow}
-                className="bg-[#161b30] hover:bg-[#1e2444] border border-white/5 text-sm text-gray-300 font-semibold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Course</span>
-              </button>
+              {!isDirectSGPA ? (
+                <button
+                  type="button"
+                  onClick={addCourseRow}
+                  className="bg-[#161b30] hover:bg-[#1e2444] border border-white/5 text-sm text-gray-300 font-semibold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Course</span>
+                </button>
+              ) : (
+                <div />
+              )}
 
               <div className="flex items-center gap-6">
                 <div className="text-right">
-                  <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Est. SGPA</p>
+                  <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">
+                    {isDirectSGPA ? 'Logged SGPA' : 'Est. SGPA'}
+                  </p>
                   <p className="text-lg font-bold text-white">{calculateLiveSGPA()}</p>
                 </div>
                 <button
@@ -329,32 +443,91 @@ const GPA = () => {
           </form>
         </div>
 
-        {/* History Log view */}
-        <div className="bg-[#0f1424] border border-white/5 rounded-3xl p-6 space-y-6 h-fit">
-          <h3 className="text-lg font-bold text-white">Semester Summary Logs</h3>
-
-          {history.length === 0 ? (
-            <p className="text-gray-500 text-xs text-center py-6">No semesters logged yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {history.map((record) => (
-                <div
-                  key={record._id}
-                  className="bg-[#161b30] border border-white/5 p-4.5 rounded-2xl flex justify-between items-center"
-                >
-                  <div>
-                    <h4 className="font-semibold text-white">Semester {record.semester}</h4>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {record.courses?.length} Courses logged
-                    </p>
-                  </div>
-                  <span className="bg-purple-500/10 border border-purple-500/20 text-purple-400 font-bold px-3 py-1.5 rounded-xl text-sm">
-                    {record.sgpa.toFixed(2)}
-                  </span>
-                </div>
-              ))}
+        {/* Sidebar Widgets (Baseline & Logs) */}
+        <div className="space-y-6">
+          {/* Baseline GPA settings */}
+          <div className="bg-[#0f1424] border border-white/5 rounded-3xl p-6 space-y-6">
+            <div className="flex items-center gap-2.5">
+              <GraduationCap className="w-5 h-5 text-purple-400" />
+              <h3 className="text-lg font-bold text-white">Baseline (Prior Semesters)</h3>
             </div>
-          )}
+            <p className="text-xs text-gray-400 leading-relaxed font-normal">
+              Enter your baseline CGPA and total credits from previous semesters to baseline your overall CGPA calculation.
+            </p>
+            <form onSubmit={handleSaveBaseline} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-300 text-xs font-semibold mb-2">Prior CGPA</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    placeholder="8.50"
+                    value={previousCgpa}
+                    onChange={(e) => setPreviousCgpa(e.target.value)}
+                    className="w-full bg-[#161b30] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 text-xs font-semibold mb-2">Prior Credits</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="60"
+                    value={previousCredits}
+                    onChange={(e) => setPreviousCredits(e.target.value)}
+                    className="w-full bg-[#161b30] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={baselineSaving}
+                className="w-full bg-[#161b30] hover:bg-[#1e2444] border border-white/5 text-sm text-gray-300 font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                {baselineSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Update Baseline</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* History Log view */}
+          <div className="bg-[#0f1424] border border-white/5 rounded-3xl p-6 space-y-6 h-fit">
+            <h3 className="text-lg font-bold text-white">Semester Summary Logs</h3>
+
+            {history.length === 0 ? (
+              <p className="text-gray-500 text-xs text-center py-6">No semesters logged yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {history.map((record) => (
+                  <div
+                    key={record._id}
+                    className="bg-[#161b30] border border-white/5 p-4.5 rounded-2xl flex justify-between items-center"
+                  >
+                    <div>
+                      <h4 className="font-semibold text-white">Semester {record.semester}</h4>
+                      <p className="text-xs text-gray-400 mt-0.5 font-normal">
+                        {record.isDirectSGPA
+                          ? `${record.totalCredits || 0} Credits (Direct Entry)`
+                          : `${record.courses?.length || 0} Courses logged`
+                        }
+                      </p>
+                    </div>
+                    <span className="bg-purple-500/10 border border-purple-500/20 text-purple-400 font-bold px-3 py-1.5 rounded-xl text-sm">
+                      {record.sgpa.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

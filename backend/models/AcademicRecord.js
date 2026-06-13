@@ -47,6 +47,14 @@ const AcademicRecordSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    totalCredits: {
+      type: Number,
+      default: 0,
+    },
+    isDirectSGPA: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
