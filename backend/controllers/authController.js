@@ -306,7 +306,7 @@ export const getMe = async (req, res) => {
 // @route   PUT /api/auth/profile
 // @access  Private
 export const updateProfile = async (req, res) => {
-  const { phone, department, year, avatar } = req.body;
+  const { name, phone, department, year, avatar, regdno, platform, github, leetcode, linkedin } = req.body;
 
   try {
     const user = await User.findById(req.user.id);
@@ -318,10 +318,16 @@ export const updateProfile = async (req, res) => {
     }
 
     // Update fields
+    if (name !== undefined) user.name = name;
     if (phone !== undefined) user.profile.phone = phone;
     if (department !== undefined) user.profile.department = department;
     if (year !== undefined) user.profile.year = year;
     if (avatar !== undefined) user.profile.avatar = avatar;
+    if (regdno !== undefined) user.profile.regdno = regdno;
+    if (platform !== undefined) user.profile.platform = platform;
+    if (github !== undefined) user.profile.github = github;
+    if (leetcode !== undefined) user.profile.leetcode = leetcode;
+    if (linkedin !== undefined) user.profile.linkedin = linkedin;
 
     await user.save();
 

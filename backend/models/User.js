@@ -38,8 +38,8 @@ const UserSchema = new mongoose.Schema(
     resetPasswordToken: String,
     resetPasswordExpire: Date,
     profile: {
-      phone: String,
-      department: String,
+      phone: { type: String, default: '' },
+      department: { type: String, default: '' },
       year: {
         type: Number,
         min: 1,
@@ -49,6 +49,11 @@ const UserSchema = new mongoose.Schema(
         type: String,
         default: 'https://res.cloudinary.com/placeholder-avatar.png',
       },
+      regdno: { type: String, default: '' },
+      platform: { type: String, default: '' },
+      github: { type: String, default: '' },
+      leetcode: { type: String, default: '' },
+      linkedin: { type: String, default: '' },
     },
     // Placements Readiness metrics & GPA caches
     gpaStats: {
